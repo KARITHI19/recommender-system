@@ -5,55 +5,62 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 from implicit.als import AlternatingLeastSquares
 import numpy as np
+import gdown
+import os
 
 st.title("🛒 Product Recommender System")
 
-# File upload
-uploaded_file = st.file_uploader("📁 Upload your Reviews CSV file", type=["csv"])
+# Google Drive file ID (from shared link)
+file_id = "1lmr0-xs2HBhsyj14kerFCKTrsNnVzQv7"  # replace with your actual ID
+url = f"https://drive.google.com/drive/u/0/home={file_id}"
+csv_file = "reviews.csv"
 
-if uploaded_file is not None:
-    reviews = pd.read_csv(uploaded_file)
+# Download from Google Drive if not already downloaded
+if not os.path.exists(csv_file):
+    with st.spinner("Downloading dataset from Google Drive..."):
+        gdown.download(url, csv_file, quiet=False)
 
-    # Basic validation
-    required_cols = {'UserId', 'ProductId', 'Score'}
-    if not required_cols.issubset(reviews.columns):
-        st.error("Uploaded file must contain the following columns: UserId, ProductId, Score")
-    else:
-        reviews = reviews.dropna(subset=['UserId', 'ProductId', 'Score'])
+# Load the CSV
+reviews = pd.read_csv(csv_file)
 
-        # Show score distribution
-        st.subheader("📊 Score Distribution")
-        score_counts = reviews['Score'].value_counts().sort_index()
-        st.bar_chart(score_counts)
+# Basic validation
+required_cols = {'UserId', 'ProductId', 'Score'}
+if not required_cols.issubset(reviews.columns):
+    st.error("CSV must contain: UserId, ProductId, Score")
+else:
+    reviews = reviews.dropna(subset=['UserId', 'ProductId', 'Score'])
 
-        # Create user-item matrix
-        user_map = {user: idx for idx, user in enumerate(reviews['UserId'].unique())}
-        item_map = {item: idx for idx, item in enumerate(reviews['ProductId'].unique())}
-        user_inv_map = {idx: user for user, idx in user_map.items()}
-        item_inv_map = {idx: item for item, idx in item_map.items()}
+    st.subheader("📊 Score Distribution")
+    st.bar_chart(reviews['Score'].value_counts().sort_index())
 
-        user_ids = reviews['UserId'].map(user_map)
-        item_ids = reviews['ProductId'].map(item_map)
+    user_map = {user: idx for idx, user in enumerate(reviews['UserId'].unique())}
+    item_map = {item: idx for idx, item in enumerate(reviews['ProductId'].unique())}
+    user_inv_map = {idx: user for user, idx in user_map.items()}
+    item_inv_map = {idx: item for item, idx in item_map.items()}
 
-        matrix = csr_matrix((reviews['Score'], (user_ids, item_ids)))
+    user_ids = reviews['UserId'].map(user_map)
+    item_ids = reviews['ProductId'].map(item_map)
+    matrix = csr_matrix((reviews['Score'], (user_ids, item_ids)))
 
-        # Train model
-        with st.spinner("Training recommendation model..."):
-            model = AlternatingLeastSquares(factors=50, regularization=0.1, iterations=20)
-            model.fit(matrix.T.tocsr())  # IMPORTANT: use CSR format after transpose
-            st.success("Model trained successfully!")
+    with st.spinner("Training recommendation model..."):
+        model = AlternatingLeastSquares(factors=50, regularization=0.1, iterations=20)
+        model.fit(matrix.T.tocsr())
+        st.success("Model trained!")
 
-        # Input for recommendations
-        user_input = st.text_input("🔍 Enter a User ID to get recommendations:")
+    user_input = st.text_input("🔍 Enter a User ID to get recommendations:")
 
-        if user_input:
+    if user_input:
+        try:
+            user_input = int(user_input)
             if user_input not in user_map:
-                st.warning("User ID not found in the dataset.")
+                st.warning("User ID not found.")
             else:
                 user_idx = user_map[user_input]
-                recommendations = model.recommend(user_idx, matrix.tocsr(), N=5)  # <-- FIXED HERE
+                recommendations = model.recommend(user_idx, matrix.tocsr(), N=5)
+
                 st.subheader("✅ Top Recommendations:")
                 for i, (item_id, score) in enumerate(recommendations, 1):
                     st.write(f"{i}. Product ID: `{item_inv_map[item_id]}` (Score: {score:.2f})")
-else:
-    st.info("Please upload a CSV file to begin.")
+
+        except ValueError:
+            st.warning("Please enter a valid integer for User ID.")
