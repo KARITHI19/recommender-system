@@ -9,7 +9,7 @@ import numpy as np
 # Load the cleaned dataset
 @st.cache_data
 def load_data():
-    reviews = pd.read_csv("Reviews.csv")
+    reviews = pd.read_csv(r"C:\Users\Administrator\Downloads\Reviews.csv")
     reviews = reviews.dropna()
     reviews = reviews[['UserId', 'ProductId', 'Score']]
     return reviews
