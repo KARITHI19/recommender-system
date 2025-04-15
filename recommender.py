@@ -1,29 +1,29 @@
-# streamlit_app.py
-
 import streamlit as st
 import pandas as pd
 from scipy.sparse import csr_matrix
 from implicit.als import AlternatingLeastSquares
 import numpy as np
-import gdown
-import os
 
 st.title("🛒 Product Recommender System")
 
-# Google Drive file ID (from shared link)
-file_id = "1lmr0-xs2HBhsyj14kerFCKTrsNnVzQv7"  # replace with your actual ID
-url = f"https://drive.google.com/drive/u/0/home={file_id}"
-csv_file = "reviews.csv"
+# Google Drive shareable file ID
+file_id = "1lmr0-xs2HBhsyj14kerFCKTrsNnVzQv7"  # replace with your actual file ID
+url = f"https://drive.google.com/drive/u/0/home={file_id}&export=download"
 
-# Download from Google Drive if not already downloaded
-if not os.path.exists(csv_file):
-    with st.spinner("Downloading dataset from Google Drive..."):
-        gdown.download(url, csv_file, quiet=False)
+# Load CSV directly from Google Drive
+@st.cache_data
+def load_data_from_drive(url):
+    return pd.read_csv(url)
 
-# Load the CSV
-reviews = pd.read_csv(csv_file)
+with st.spinner("Loading dataset from Google Drive..."):
+    try:
+        reviews = load_data_from_drive(url)
+        st.success("Data loaded successfully!")
+    except Exception as e:
+        st.error(f"Failed to load data: {e}")
+        st.stop()
 
-# Basic validation
+# Validate the necessary columns
 required_cols = {'UserId', 'ProductId', 'Score'}
 if not required_cols.issubset(reviews.columns):
     st.error("CSV must contain: UserId, ProductId, Score")
@@ -33,6 +33,7 @@ else:
     st.subheader("📊 Score Distribution")
     st.bar_chart(reviews['Score'].value_counts().sort_index())
 
+    # Map users and products to indices
     user_map = {user: idx for idx, user in enumerate(reviews['UserId'].unique())}
     item_map = {item: idx for idx, item in enumerate(reviews['ProductId'].unique())}
     user_inv_map = {idx: user for user, idx in user_map.items()}
@@ -42,11 +43,13 @@ else:
     item_ids = reviews['ProductId'].map(item_map)
     matrix = csr_matrix((reviews['Score'], (user_ids, item_ids)))
 
+    # Train the ALS model
     with st.spinner("Training recommendation model..."):
         model = AlternatingLeastSquares(factors=50, regularization=0.1, iterations=20)
         model.fit(matrix.T.tocsr())
         st.success("Model trained!")
 
+    # Input for user recommendation
     user_input = st.text_input("🔍 Enter a User ID to get recommendations:")
 
     if user_input:
@@ -61,6 +64,5 @@ else:
                 st.subheader("✅ Top Recommendations:")
                 for i, (item_id, score) in enumerate(recommendations, 1):
                     st.write(f"{i}. Product ID: `{item_inv_map[item_id]}` (Score: {score:.2f})")
-
         except ValueError:
             st.warning("Please enter a valid integer for User ID.")
